@@ -12,5 +12,5 @@ This is a test to check opencv functionality.
 This is the program to train the model.
 ### version5.py
 This is the main program.
-It got labeled as version5 because when I started writing the program I was too dumb to learn Git properly first and just saved a bunch of checkpoints
+It got labeled as version5 because when I started writing the program I was too dumb to learn Git properly first and just saved a bunch of checkpoints.
 *face-palm*
