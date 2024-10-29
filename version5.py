@@ -7,6 +7,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import messagebox
 import time
+from datetime import datetime
 
 # Load the pre-trained MobileNetV2 model
 model = models.mobilenet_v2(weights='DEFAULT')
@@ -36,11 +37,20 @@ label.pack()
 last_popup_time = 0
 popup_interval = 30  # seconds
 
+def log_high_risk():
+    """Log the timestamp when high burnout risk is detected."""
+    with open("high_burnout_log.csv", "a") as file:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        file.write(f"{timestamp},High Burnout Risk\n")
+    print(f"Logged high burnout risk at {timestamp}")
+
 def show_high_risk_popup():
+    """Show a warning popup and log if high risk is detected."""
     global last_popup_time
     current_time = time.time()
     if current_time - last_popup_time > popup_interval:
         messagebox.showwarning("High Burnout Risk", "High burnout risk detected! Please take a break.")
+        log_high_risk()  # Log the high risk event
         last_popup_time = current_time
 
 # Open webcam
