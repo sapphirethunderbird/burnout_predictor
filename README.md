@@ -1,9 +1,7 @@
 # Burnout Predictor
 This is an AI program trained on FER 2013 to analyze facial expressions and predict the user's risk for burnout.
-
+## This data is the FER 2013 dataset from [Kaggle](https://www.kaggle.com/datasets/msambare/fer2013)
 ## What each file does
-### Archive
-This is the data for our model.
 ### burnout_predictor_model.pth
 This is the pre-trained model.
 ### opencv_test.py
