@@ -1,5 +1,8 @@
 # Virtual Environment Folder #
 .venv/
 
+# Archive #
+archive/
+
 # OS Files #
 .DS_Store
