@@ -4,5 +4,10 @@
 # Archive #
 archive/
 
+# Log file #
+
+*.csv
+
 # OS Files #
 .DS_Store
+
