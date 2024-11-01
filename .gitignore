@@ -6,7 +6,7 @@ archive/
 
 # Log file #
 
-*.csv
+high_burnout_log.csv
 
 # OS Files #
 .DS_Store
