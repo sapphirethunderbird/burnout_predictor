@@ -4,6 +4,9 @@
 # Archive #
 archive/
 
+# Log Files #
+high_burnout_log.csv
+
 # OS Files #
 .DS_Store
 
