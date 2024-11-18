@@ -7,6 +7,9 @@ from torchvision import models, transforms
 import torch.nn.functional as F
 import time
 from datetime import datetime
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 class BurnoutApp:
     def __init__(self, root):
@@ -63,10 +66,53 @@ class BurnoutApp:
         self.prediction_label = tk.Label(self.feed_tab, text="Predicted: N/A", font=("Arial", 14))
         self.prediction_label.pack(pady=10)
 
+    import pandas as pd
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
     def setup_chart_tab(self):
-        """Set up the chart tab."""
-        chart_label = tk.Label(self.chart_tab, text="Chart Analysis (Coming Soon)", font=("Arial", 16))
+        """Set up the chart tab with a button to generate a heatmap."""
+        chart_label = tk.Label(self.chart_tab, text="Chart Analysis", font=("Arial", 16))
         chart_label.pack(pady=20)
+
+        generate_button = tk.Button(self.chart_tab, text="Generate Heatmap", command=self.generate_heatmap)
+        generate_button.pack(pady=10)
+
+        self.chart_canvas = tk.Canvas(self.chart_tab)
+        self.chart_canvas.pack(expand=True, fill="both")
+
+    def generate_heatmap(self):
+        """Generate a heatmap from the high burnout log CSV."""
+        try:
+            # Load data
+            df = pd.read_csv("high_burnout_log.csv", header=None, names=["timestamp", "risk_level"])
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df["date"] = df["timestamp"].dt.date
+            df["hour"] = df["timestamp"].dt.hour
+
+            # Create a pivot table for the heatmap
+            heatmap_data = df.pivot_table(index="hour", columns="date", aggfunc="size", fill_value=0)
+
+            # Plot heatmap
+            plt.figure(figsize=(12, 8))
+            sns.heatmap(heatmap_data, annot=True, fmt="d", cmap="coolwarm", cbar=True)
+            plt.title("High Burnout Risk Frequency by Date and Hour")
+            plt.xlabel("Date")
+            plt.ylabel("Hour of Day")
+
+            # Display the plot in the chart canvas
+            plt.tight_layout()
+            plt.savefig("heatmap.png")  # Save to a temporary file
+            plt.close()
+
+            # Display the saved heatmap in the Tkinter GUI
+            heatmap_img = ImageTk.PhotoImage(Image.open("heatmap.png"))
+            self.chart_canvas.create_image(0, 0, image=heatmap_img, anchor="nw")
+            self.chart_canvas.image = heatmap_img  # Keep a reference to avoid garbage collection
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate heatmap: {e}")
+
 
     def run_feed(self):
         """Starts the webcam feed."""
