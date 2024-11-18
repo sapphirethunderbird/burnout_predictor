@@ -36,6 +36,3 @@ It initially got labeled as version5.py because when I started writing the progr
 - Add an interactive chart
 - Possible Raspberry Pi integration
 - Localization
-
-
->>>>>>> e384675e155b974af08dc0e77bcef942eb4cc15e
