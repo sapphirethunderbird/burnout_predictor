@@ -4,6 +4,9 @@
 # Archive #
 archive/
 
+# heatmap png #
+heatmap.png
+
 # Log Files #
 high_burnout_log.csv
 
