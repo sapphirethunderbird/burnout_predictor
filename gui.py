@@ -90,15 +90,23 @@ class BurnoutApp:
 
     def update_feed(self):
         """Continuously capture frames from the video feed, make predictions, and display them."""
+        # Initialize the camera if not already done
         if self.cap is None:
             self.cap = cv2.VideoCapture(0)
 
-        if not self.cap.isOpened():
+        # Confirm the camera is initialized and accessible
+        if not self.cap or not self.cap.isOpened():
             messagebox.showerror("Error", "Unable to access the camera. Please check your device.")
             return
 
         ret, frame = self.cap.read()
         if ret:
+            # Convert the frame to RGB for Tkinter display
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(frame_rgb)
+            self.imgtk = ImageTk.PhotoImage(image=img)  # Prevent garbage collection
+            self.video_label.configure(image=self.imgtk)
+
             # Preprocess the frame for the model
             input_tensor = self.preprocess_frame(frame)
             if input_tensor is not None:
@@ -111,19 +119,18 @@ class BurnoutApp:
                 # Map the prediction to a risk level
                 predicted_label = self.risk_levels.get(predicted_idx, "Unknown")
 
-                # Show high burnout risk popup if detected
-                if predicted_label == "High Burnout Risk" and time.time() - self.last_popup_time > self.popup_interval:
-                    self.show_high_risk_popup()
-                    self.last_popup_time = time.time()
+                # Log high burnout risk predictions and show a popup
+                if predicted_label == "High Burnout Risk":
+                    current_time = time.time()
+                    if current_time - self.last_popup_time > self.popup_interval:
+                        self.show_high_risk_popup()
+                        self.last_popup_time = current_time
 
-                # Update prediction label
+                    # Log to CSV regardless of popup timing
+                    self.log_high_risk()
+
+                # Display prediction on the video feed
                 self.prediction_label.config(text=f"Predicted: {predicted_label}")
-
-            # Convert frame to RGB and display in Tkinter
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(frame_rgb)
-            self.imgtk = ImageTk.PhotoImage(image=img)  # Prevent garbage collection
-            self.video_label.configure(image=self.imgtk)
 
         # Schedule the next frame update
         self.video_label.after(10, self.update_feed)
