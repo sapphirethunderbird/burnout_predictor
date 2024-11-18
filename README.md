@@ -8,7 +8,7 @@ This is the pre-trained model.
 This is a test to check opencv functionality.
 ### trainingv2.py
 This is the program to train the model.
-### version5.py
+### ~~version5.py~~ gui.py
 This is the main program.
 It got labeled as version5.py because when I started writing the program I was too dumb to learn Git properly first and just saved a bunch of checkpoints.
 *face-palm* 
