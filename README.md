@@ -23,7 +23,7 @@ It got labeled as version5.py because when I started writing the program I was t
     - How you install `tkinter` will depend on your operating system. 
         - For OSX: `brew install python-tk`
         - For Windows, `tkinter` should be included in the Python installer
-        - For Linux, consult the instructions for your distrobution
+        - For Linux, consult the instructions for your distro
 ### Training the model 
 - For training the model, download the FER 2013 dataset from [Kaggle](https://www.kaggle.com/datasets/msambare/fer2013)
 - Make sure to match the path for your dataset in `trainingv2.py`
