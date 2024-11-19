@@ -83,7 +83,7 @@ class BurnoutApp:
         self.chart_canvas.pack(expand=True, fill="both")
 
     def generate_heatmap(self):
-        """Generate a heatmap from the high burnout log CSV."""
+        """Generate a GitHub-style heatmap from the high burnout log CSV."""
         try:
             # Load data
             df = pd.read_csv("high_burnout_log.csv", header=None, names=["timestamp", "risk_level"])
@@ -95,25 +95,38 @@ class BurnoutApp:
             heatmap_data = df.pivot_table(index="hour", columns="date", aggfunc="size", fill_value=0)
 
             # Plot heatmap
-            plt.figure(figsize=(12, 8))
-            sns.heatmap(heatmap_data, annot=True, fmt="d", cmap="coolwarm", cbar=True)
-            plt.title("High Burnout Risk Frequency by Date and Hour")
-            plt.xlabel("Date")
-            plt.ylabel("Hour of Day")
-
-            # Display the plot in the chart canvas
+            plt.figure(figsize=(12, 6))
+            sns.heatmap(
+                heatmap_data,
+                cmap="Greens",
+                cbar=True,
+                linewidths=0.1,
+                linecolor="white",
+                square=True,
+                xticklabels=True,
+                yticklabels=True
+            )
+            plt.title("High Burnout Risk Frequency", fontsize=16, weight="bold")
+            plt.xlabel("Date", fontsize=12)
+            plt.ylabel("Hour of Day", fontsize=12)
+            plt.xticks(rotation=45, fontsize=10)
+            plt.yticks(fontsize=10)
             plt.tight_layout()
-            plt.savefig("heatmap.png")  # Save to a temporary file
+
+            # Save and display the heatmap in the Tkinter GUI
+            plt.savefig("heatmap.png", dpi=300)  # Save to a temporary file
             plt.close()
 
-            # Display the saved heatmap in the Tkinter GUI
-            heatmap_img = ImageTk.PhotoImage(Image.open("heatmap.png"))
+            heatmap_img = Image.open("heatmap.png").resize(
+                (self.chart_canvas.winfo_width(), self.chart_canvas.winfo_height()), Image.Resampling.LANCZOS
+            )
+
+            heatmap_img = ImageTk.PhotoImage(heatmap_img)
             self.chart_canvas.create_image(0, 0, image=heatmap_img, anchor="nw")
             self.chart_canvas.image = heatmap_img  # Keep a reference to avoid garbage collection
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate heatmap: {e}")
-
 
     def run_feed(self):
         """Starts the webcam feed."""
