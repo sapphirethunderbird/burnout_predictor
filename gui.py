@@ -98,7 +98,7 @@ class BurnoutApp:
             plt.figure(figsize=(12, 6))
             sns.heatmap(
                 heatmap_data,
-                cmap="Greens",
+                cmap="Reds",
                 cbar=True,
                 linewidths=0.1,
                 linecolor="white",
