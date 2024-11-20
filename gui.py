@@ -39,6 +39,9 @@ class BurnoutApp:
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        # Set counter for high-risk predictions in session
+        self.high_risk_count = 0
+
     def load_model(self):
         """Load the pre-trained MobileNetV2 model and preprocessing pipeline."""
         model = models.mobilenet_v2(weights='DEFAULT')
@@ -66,10 +69,6 @@ class BurnoutApp:
 
         self.prediction_label = tk.Label(self.feed_tab, text="Predicted: N/A", font=("Arial", 14))
         self.prediction_label.pack(pady=10)
-
-    import pandas as pd
-    import seaborn as sns
-    import matplotlib.pyplot as plt
 
     def setup_chart_tab(self):
         """Set up the chart tab with a button to generate a heatmap."""
@@ -146,7 +145,18 @@ class BurnoutApp:
             print(f"Error in preprocessing frame: {e}")
             return None
 
-
+#    def apply_red_tint(self, frame, intensity):
+#       """Apply a red tint to the frame based on intensity."""
+#       overlay = frame.copy()
+#       red_tint = np.full(frame.shape, (0, 0, 255), dtype=np.uint8)  # Pure red color
+#       intensity = np.clip(intensity, 0, 1)  # Ensure intensity stays between 0 and 1
+#       cv2.addWeighted(red_tint, intensity, frame, 1 - intensity, 0, overlay)
+#       return overlay
+    def apply_red_tint(self, frame, intensity):
+        """Simplified red tint."""
+        red_channel = frame[:, :, 2]
+        frame[:, :, 2] = np.clip(red_channel + (255 * intensity), 0, 255).astype(np.uint8)
+        return frame
 
     def update_feed(self):
         """Continuously capture frames from the video feed, make predictions, and display them."""
@@ -161,13 +171,20 @@ class BurnoutApp:
 
         ret, frame = self.cap.read()
         if ret:
+            # Calculate intensity based on high_risk_count
+            intensity = min(0.2 + self.high_risk_count / 3, 1.0)  # Normalize to a max of 1.0
+            print(f"Current intensity: {intensity}, high_risk_count: {self.high_risk_count}")
+
+            # Apply red tint to the frame
+            tinted_frame = self.apply_red_tint(frame, 0.5)
+
             # Convert the frame to RGB for Tkinter display
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
-            self.imgtk = ImageTk.PhotoImage(image=img)  # Prevent garbage collection
+            self.imgtk = ImageTk.PhotoImage(image=img)
             self.video_label.configure(image=self.imgtk)
 
-            # Preprocess the frame for the model
+           # Preprocess the frame for the model
             input_tensor = self.preprocess_frame(frame)
             if input_tensor is not None:
                 # Run the model prediction
@@ -185,6 +202,7 @@ class BurnoutApp:
                     if current_time - self.last_popup_time > self.popup_interval:
                         self.show_high_risk_popup()
                         self.last_popup_time = current_time
+                    print(f"High risk count: {self.high_risk_count}")
 
                     # Log to CSV regardless of popup timing
                     self.log_high_risk()
@@ -194,6 +212,8 @@ class BurnoutApp:
 
         # Schedule the next frame update
         self.video_label.after(10, self.update_feed)
+
+
 
     def show_high_risk_popup(self):
         """Shows a popup if high burnout risk is detected."""
@@ -205,6 +225,7 @@ class BurnoutApp:
 
     def log_high_risk(self):
         """Logs high burnout risk detections."""
+        self.high_risk_count += 1  # Increment the counter
         with open("high_burnout_log.csv", "a") as file:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             file.write(f"{timestamp},High Burnout Risk\n")
