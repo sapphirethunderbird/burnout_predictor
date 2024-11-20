@@ -40,7 +40,10 @@ class BurnoutApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Set counter for high-risk predictions in session
+        self.high_risk_detected = False
         self.high_risk_count = 0
+        self.frames_since_high_risk = 0
+        self.cooldown_frames = 30  # Number of non-high-risk frames to fully remove the tint
 
     def load_model(self):
         """Load the pre-trained MobileNetV2 model and preprocessing pipeline."""
@@ -152,67 +155,143 @@ class BurnoutApp:
 #       intensity = np.clip(intensity, 0, 1)  # Ensure intensity stays between 0 and 1
 #       cv2.addWeighted(red_tint, intensity, frame, 1 - intensity, 0, overlay)
 #       return overlay
-    def apply_red_tint(self, frame, intensity):
-        """Simplified red tint."""
-        red_channel = frame[:, :, 2]
-        frame[:, :, 2] = np.clip(red_channel + (255 * intensity), 0, 255).astype(np.uint8)
-        return frame
+#    def apply_red_tint(self, frame, intensity):
+#        """Simplified red tint."""
+#        red_channel = frame[:, :, 2]
+#        frame[:, :, 2] = np.clip(red_channel + (255 * intensity), 0, 255).astype(np.uint8)
+#        return frame
 
+    def apply_red_tint(self, frame, intensity):
+        """Apply a red tint to the frame based on intensity."""
+        overlay = frame.copy()
+        red_tint = np.full(frame.shape, (0, 0, 255), dtype=np.uint8)  # Pure red color
+        intensity = np.clip(intensity, 0, 1)  # Ensure intensity stays between 0 and 1
+        cv2.addWeighted(red_tint, intensity, frame, 1 - intensity, 0, overlay)
+        return overlay
+
+#    def update_feed(self):
+#        """Continuously capture frames from the video feed, make predictions, and display them."""
+#        # Initialize the camera if not already done
+#        if self.cap is None:
+#            self.cap = cv2.VideoCapture(0)
+#
+#        # Confirm the camera is initialized and accessible
+#        if not self.cap or not self.cap.isOpened():
+#            messagebox.showerror("Error", "Unable to access the camera. Please check your device.")
+#            return
+#
+#        ret, frame = self.cap.read()
+#        if ret:
+#            # Calculate intensity based on high_risk_count
+#            intensity = min(0.2 + self.high_risk_count / 3, 1.0)  # Normalize to a max of 1.0
+#            print(f"Current intensity: {intensity}, high_risk_count: {self.high_risk_count}")
+#
+#            # Apply red tint to the frame
+#            tinted_frame = self.apply_red_tint(frame, 0.5)
+#
+            # Convert the frame to RGB for Tkinter display
+#            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+#            img = Image.fromarray(frame_rgb)
+#            self.imgtk = ImageTk.PhotoImage(image=img)
+#            self.video_label.configure(image=self.imgtk)
+#
+#           # Preprocess the frame for the model
+#            input_tensor = self.preprocess_frame(frame)
+#            if input_tensor is not None:
+#                # Run the model prediction
+#                with torch.no_grad():
+#                    output = self.model(input_tensor)
+#                    probabilities = torch.nn.functional.softmax(output, dim=1)
+#                    predicted_idx = torch.argmax(probabilities, dim=1).item()
+#
+#                # Map the prediction to a risk level
+#                predicted_label = self.risk_levels.get(predicted_idx, "Unknown")
+#
+#                # Log high burnout risk predictions and show a popup
+#                if predicted_label == "High Burnout Risk":
+#                    self.frames_since_high_risk = 0
+#                    self.high_risk_count += 1
+#
+#                    current_time = time.time()
+#                    if current_time - self.last_popup_time > self.popup_interval:
+#                        self.show_high_risk_popup()
+#                        self.last_popup_time = current_time
+#                    #print(f"High risk count: {self.high_risk_count}")
+#                else:
+#                    #Increment cooldown counter for non-high-risk frames
+#                    self.frames_since_high_risk += 1
+#
+#                # Calculate red tint intensity based on the cooldown
+#                intensity = max(0, 1 - (self.frames_since_high_risk / self.cooldown_frames))
+#
+#                # Log to CSV regardless of popup timing
+#                self.log_high_risk()
+#
+#                # Display prediction on the video feed
+#                self.prediction_label.config(text=f"Predicted: {predicted_label}")
+#
+        # Schedule the next frame update
+#        self.video_label.after(10, self.update_feed)
     def update_feed(self):
         """Continuously capture frames from the video feed, make predictions, and display them."""
-        # Initialize the camera if not already done
         if self.cap is None:
             self.cap = cv2.VideoCapture(0)
 
-        # Confirm the camera is initialized and accessible
         if not self.cap or not self.cap.isOpened():
             messagebox.showerror("Error", "Unable to access the camera. Please check your device.")
             return
 
         ret, frame = self.cap.read()
         if ret:
-            # Calculate intensity based on high_risk_count
-            intensity = min(0.2 + self.high_risk_count / 3, 1.0)  # Normalize to a max of 1.0
-            print(f"Current intensity: {intensity}, high_risk_count: {self.high_risk_count}")
+            # Preprocess the frame for prediction
+            input_tensor = self.preprocess_frame(frame)
+            if input_tensor is not None:
+                with torch.no_grad():
+                    output = self.model(input_tensor)
+                    probabilities = F.softmax(output, dim=1)
+                    predicted_idx = torch.argmax(probabilities, dim=1).item()
 
-            # Apply red tint to the frame
-            tinted_frame = self.apply_red_tint(frame, 0.5)
+                predicted_label = self.risk_levels.get(predicted_idx, "Unknown")
 
-            # Convert the frame to RGB for Tkinter display
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Handle high-risk prediction logic
+                if predicted_label == "High Burnout Risk":
+                    self.high_risk_detected = True
+                    self.frames_since_high_risk = 0  # Reset cooldown counter
+
+                    # Show popup if enough time has passed since the last one
+                    current_time = time.time()
+                    if current_time - self.last_popup_time > self.popup_interval:
+                        self.show_high_risk_popup()  # Show warning popup
+                        self.last_popup_time = current_time
+
+                    self.log_high_risk()  # Log the high-risk event
+                else:
+                    # Increment cooldown counter for non-high-risk frames
+                    if self.high_risk_detected:
+                        self.frames_since_high_risk += 1
+
+                # Calculate red tint intensity based on cooldown
+                if self.high_risk_detected:
+                    intensity = max(0, 1 - (self.frames_since_high_risk / self.cooldown_frames))
+                    if intensity == 0:
+                        self.high_risk_detected = False  # Stop applying tint when faded out
+                else:
+                    intensity = 0  # No tint by default
+
+            # Apply tint to the frame
+            tinted_frame = self.apply_red_tint(frame, intensity)
+
+            # Convert to RGB for display
+            frame_rgb = cv2.cvtColor(tinted_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
             self.imgtk = ImageTk.PhotoImage(image=img)
             self.video_label.configure(image=self.imgtk)
 
-           # Preprocess the frame for the model
-            input_tensor = self.preprocess_frame(frame)
-            if input_tensor is not None:
-                # Run the model prediction
-                with torch.no_grad():
-                    output = self.model(input_tensor)
-                    probabilities = torch.nn.functional.softmax(output, dim=1)
-                    predicted_idx = torch.argmax(probabilities, dim=1).item()
+            # Update prediction label
+            self.prediction_label.config(text=f"Predicted: {predicted_label}")
 
-                # Map the prediction to a risk level
-                predicted_label = self.risk_levels.get(predicted_idx, "Unknown")
-
-                # Log high burnout risk predictions and show a popup
-                if predicted_label == "High Burnout Risk":
-                    current_time = time.time()
-                    if current_time - self.last_popup_time > self.popup_interval:
-                        self.show_high_risk_popup()
-                        self.last_popup_time = current_time
-                    print(f"High risk count: {self.high_risk_count}")
-
-                    # Log to CSV regardless of popup timing
-                    self.log_high_risk()
-
-                # Display prediction on the video feed
-                self.prediction_label.config(text=f"Predicted: {predicted_label}")
-
-        # Schedule the next frame update
+        # Schedule next frame update
         self.video_label.after(10, self.update_feed)
-
 
 
     def show_high_risk_popup(self):
@@ -220,7 +299,6 @@ class BurnoutApp:
         current_time = time.time()
         if current_time - self.last_popup_time > self.popup_interval:
             messagebox.showwarning("High Burnout Risk", "High burnout risk detected! Please take a break.")
-            self.log_high_risk()
             self.last_popup_time = current_time
 
     def log_high_risk(self):
