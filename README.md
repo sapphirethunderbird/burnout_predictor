@@ -34,27 +34,27 @@ This is the pre-trained model.
 This is a test to check opencv functionality.
 ### trainingv2.py
 This is the program to train the model.
-### ~~version5.py~~ gui.py
-This is the main program.
-It initially got labeled as version5.py because when I started writing the program I was too dumb to learn Git properly first and just saved a bunch of checkpoints.
-*face-palm*
->`version5.py` can safely be deleted
+### gui.py
+This is the main program. (`version5.py` is an old checkpoint and can be safely deleted.)
 
 ## Installation
 1. Clone the repo
 `https://github.com/sapphirethunderbird/burnout_predictor.git`
 2. Install dependencies
-    - This program requires Python 3.12.7
-    - Python Libraries
-    `pip install opencv-python pillow torch torchvision`
-    - How you install `tkinter` will depend on your operating system.
-        - For OSX: `brew install python-tk`
-        - For Windows, `tkinter` should be included in the Python installer
-        - For Linux, consult the instructions for your distro
+    - This program requires Python 3.10+
+    - `pip install -r requirements.txt`
+    - `tkinter` is a system package, not available via pip:
+        - macOS: `brew install python-tk`
+        - Windows: included in the Python installer
+        - Linux: consult the instructions for your distro
+
 ### Training the model
-- For training the model, download the FER 2013 dataset from [Kaggle](https://www.kaggle.com/datasets/msambare/fer2013)
-- Make sure to match the path for your dataset in `trainingv2.py`
-- This will require the MobileNet_V2 model
+- Download the [FER 2013 dataset from Kaggle](https://www.kaggle.com/datasets/msambare/fer2013) and extract it so that `archive/train/` exists in the project root
+- Run `python trainingv2.py` — training prints loss and validation accuracy per epoch
+- A pre-trained model (`burnout_predictor_model.pth`) is included so you can run the app without retraining
+
+## Modeling assumption
+A single frame showing a sad or fearful expression is not burnout. Burnout is chronic — it shows up as a sustained pattern over time. This app reflects that: the on-screen risk indicator is based on the fraction of high-risk predictions over a rolling 60-frame window, not any individual frame. High-risk events are also logged to a CSV file and visualizable as a heatmap in the Chart Analysis tab.
 
 ## Further Improvements
 - Improve model accuracy
