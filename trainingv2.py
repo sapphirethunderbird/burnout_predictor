@@ -1,112 +1,95 @@
-from torchvision import datasets, transforms
 import torch
-from torch.utils.data import Dataset
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, models, transforms
+from torch.utils.data import Dataset, DataLoader, random_split
 
-# Define burnout mapping for emotions
 burnout_mapping = {
-    'happy': 0,        # Low risk
-    'neutral': 1,      # Moderate risk
+    'happy': 0,
+    'neutral': 1,
     'surprise': 0,
-    'sad': 2,          # High risk
-    'angry': 2,        # High risk
-    'fear': 2,         # High risk
-    'disgust': 1
+    'sad': 2,
+    'angry': 2,
+    'fear': 2,
+    'disgust': 1,
 }
 
-# Custom dataset class to map emotions to burnout levels
 class BurnoutDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.dataset = datasets.ImageFolder(root=root_dir, transform=transform)
-        self.transform = transform
-    
+
     def __len__(self):
         return len(self.dataset)
-    
-    def __getitem__(self, idx):
-        # Load image and original label (emotion)
-        image, original_label = self.dataset[idx]
-        
-        # Map original label to burnout level
-        class_name = self.dataset.classes[original_label]
-        burnout_label = burnout_mapping.get(class_name, -1)  # -1 if no mapping found
 
+    def __getitem__(self, idx):
+        image, original_label = self.dataset[idx]
+        class_name = self.dataset.classes[original_label]
+        burnout_label = burnout_mapping.get(class_name, -1)
         return image, torch.tensor(burnout_label, dtype=torch.long)
 
-# Define the path to the training folder
-data_path = 'archive/train'  # Update with the actual path
 
-# Data transformations for ResNet input
+# Canonical preprocessing — must match inference in gui.py
 preprocess = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-# Create the dataset and dataloader
-train_data = BurnoutDataset(root_dir=data_path, transform=preprocess)
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=32, shuffle=True)
-# Check a few samples from the train_loader
-for images, labels in train_loader:
-    print("Image batch shape:", images.shape)  # Should be [batch_size, 3, 224, 224]
-    print("Labels:", labels)                   # Should show burnout risk levels (0, 1, or 2)
+full_dataset = BurnoutDataset(root_dir='archive/train', transform=preprocess)
 
-    # Display a single sample label to verify correct mapping
-    print("Sample label:", labels[0].item())
-    break  # Remove this if you want to check the entire batch
-#print("Class names:", train_data.dataset.classes)
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torchvision import models, transforms
-from torch.utils.data import DataLoader
+val_size = int(0.2 * len(full_dataset))
+train_size = len(full_dataset) - val_size
+train_data, val_data = random_split(full_dataset, [train_size, val_size])
 
-# Load a smaller model for testing (MobileNetV2)
-model = models.mobilenet_v2(weights="MobileNet_V2_Weights.IMAGENET1K_V1")
-model.classifier[1] = nn.Linear(model.last_channel, 3)  # Adjust final layer for 3 burnout classes
+train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_data, batch_size=32, shuffle=False)
 
-# Use CPU only
-device = torch.device("cpu")
+print(f"Training samples: {train_size}  |  Validation samples: {val_size}")
+
+# Load existing model (backbone was originally initialized from ImageNet weights)
+# — avoids any network download, and gives us a better starting point than random init
+model = models.mobilenet_v2(weights=None)
+model.classifier[1] = nn.Linear(model.last_channel, 3)
+model.load_state_dict(torch.load('burnout_predictor_model.pth', map_location='cpu'))
+
+device = torch.device('cpu')
 model = model.to(device)
 
-# Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# Preprocessing with smaller image size
-preprocess = transforms.Compose([
-    transforms.Resize(112),  # Reduce resolution for testing
-    transforms.CenterCrop(112),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-# Training loop (testing settings)
-num_epochs = 1  # Try with a single epoch
-max_batches = 5  # Limit batches for testing purposes
+num_epochs = 10
 
 for epoch in range(num_epochs):
+    # --- Training pass ---
+    model.train()
     running_loss = 0.0
-    for batch_idx, (images, labels) in enumerate(train_loader):
-        if batch_idx >= max_batches:  # Process only max_batches for testing
-            break
+    for images, labels in train_loader:
         images, labels = images.to(device), labels.to(device)
-
-        # Zero the parameter gradients
         optimizer.zero_grad()
-
-        # Forward pass
         outputs = model(images)
         loss = criterion(outputs, labels)
-
-        # Backward pass and optimization
         loss.backward()
         optimizer.step()
-
         running_loss += loss.item()
-    
-    # Print epoch loss
-    print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/max_batches:.4f}")
 
-print("Training complete!")
-torch.save(model.state_dict(), "burnout_predictor_model.pth")
+    avg_train_loss = running_loss / len(train_loader)
 
+    # --- Validation pass ---
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            predicted = outputs.argmax(dim=1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    val_acc = correct / total
+    print(f"Epoch [{epoch+1}/{num_epochs}]  loss: {avg_train_loss:.4f}  val_acc: {val_acc:.3f}")
+
+print("\nTraining complete!")
+torch.save(model.state_dict(), 'burnout_predictor_model.pth')
+print("Saved to burnout_predictor_model.pth")
