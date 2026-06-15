@@ -22,7 +22,7 @@ class BurnoutApp:
 
         # Define video capture and variables
         self.cap: cv2.VideoCapture | None = None
-        self.model, self.preprocess, self.risk_levels = self.load_model()
+        self.model, self.preprocess, self.face_detector, self.risk_levels = self.load_model()
         self.last_popup_time = 0
         self.popup_interval = 30  # seconds
 
@@ -41,25 +41,30 @@ class BurnoutApp:
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # Set counter for high-risk predictions in session
-        self.high_risk_detected = False
         self.high_risk_count = 0
-        self.frames_since_high_risk = 0
-        self.cooldown_frames = 30  # Number of non-high-risk frames to fully remove the tint
+        # Rolling window for tint: red when >30% of the last 60 frames are High risk.
+        # This makes the display reflect burnout as frequency over time, not a single frame.
+        self.recent_predictions = []
+        self.rolling_window = 60
 
     def load_model(self):
         """Load the pre-trained MobileNetV2 model and preprocessing pipeline."""
-        model = models.mobilenet_v2(weights='DEFAULT')
-        model.classifier[1] = torch.nn.Linear(model.last_channel, 3)  # Three risk levels
+        model = models.mobilenet_v2(weights=None)
+        model.classifier[1] = torch.nn.Linear(model.last_channel, 3)
+        model.load_state_dict(torch.load('burnout_predictor_model.pth', map_location='cpu'))
         model.eval()
+        # Canonical preprocessing — must match trainingv2.py exactly
         preprocess = transforms.Compose([
+            transforms.Resize((224, 224)),
             transforms.ToTensor(),
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
+        # Haar cascade ships with OpenCV — no extra download needed
+        face_detector = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        )
         risk_levels = {0: "Low Burnout Risk", 1: "Moderate Burnout Risk", 2: "High Burnout Risk"}
-        return model, preprocess, risk_levels
+        return model, preprocess, face_detector, risk_levels
 
     def setup_feed_tab(self):
         """Set up the real-time feed tab."""
@@ -139,16 +144,26 @@ class BurnoutApp:
         self.update_feed()
 
     def preprocess_frame(self, frame):
-        """Preprocess a video frame for model input."""
-        try:
-            # Convert the frame to RGB
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            # Apply preprocessing directly to the NumPy array
-            input_tensor = self.preprocess(frame_rgb)
-            return input_tensor.unsqueeze(0)  # Add batch dimension
-        except Exception as e:
-            print(f"Error in preprocessing frame: {e}")
+        """Detect a face in the frame and preprocess it for model input.
+
+        Returns None if no face is found — the caller skips inference for that frame.
+        FER2013 was tightly-cropped faces, so we crop to match what the model trained on.
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # minNeighbors=8 reduces false positives from background objects.
+        # minSize is 10% of frame height so small blobs don't qualify as faces.
+        min_face = int(frame.shape[0] * 0.1)
+        faces = self.face_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=8, minSize=(min_face, min_face))
+        if len(faces) == 0:
             return None
+
+        # Use the largest detected face (most likely to be the user)
+        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+        face_crop = frame[y:y+h, x:x+w]
+
+        face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(face_rgb)
+        return self.preprocess(pil_img).unsqueeze(0)
 
     def apply_red_tint(self, frame, intensity):
         """Apply a red tint to the frame based on intensity."""
@@ -169,40 +184,32 @@ class BurnoutApp:
 
         ret, frame = self.cap.read()
         if ret:
-            # Preprocess the frame for prediction
+            intensity = 0
+            predicted_label = "No face detected"
             input_tensor = self.preprocess_frame(frame)
             if input_tensor is not None:
                 with torch.no_grad():
                     output = self.model(input_tensor)
                     probabilities = F.softmax(output, dim=1)
                     predicted_idx = torch.argmax(probabilities, dim=1).item()
-
+                    print([round(p, 3) for p in probabilities[0].tolist()]) 
                 predicted_label = self.risk_levels.get(predicted_idx, "Unknown")
 
-                # Handle high-risk prediction logic
-                if predicted_label == "High Burnout Risk":
-                    self.high_risk_detected = True
-                    self.frames_since_high_risk = 0  # Reset cooldown counter
+                # Update rolling window
+                self.recent_predictions.append(predicted_idx)
+                if len(self.recent_predictions) > self.rolling_window:
+                    self.recent_predictions.pop(0)
 
-                    # Show popup if enough time has passed since the last one
+                high_risk_fraction = self.recent_predictions.count(2) / len(self.recent_predictions)
+                # Tint starts at 50% High and scales to full red at 80%
+                intensity = min(1.0, max(0.0, (high_risk_fraction - 0.5) / 0.3))
+
+                if predicted_label == "High Burnout Risk":
                     current_time = time.time()
                     if current_time - self.last_popup_time > self.popup_interval:
-                        self.show_high_risk_popup()  # Show warning popup
+                        self.show_high_risk_popup()
                         self.last_popup_time = current_time
-
-                    self.log_high_risk()  # Log the high-risk event
-                else:
-                    # Increment cooldown counter for non-high-risk frames
-                    if self.high_risk_detected:
-                        self.frames_since_high_risk += 1
-
-                # Calculate red tint intensity based on cooldown
-                if self.high_risk_detected:
-                    intensity = max(0, 1 - (self.frames_since_high_risk / self.cooldown_frames))
-                    if intensity == 0:
-                        self.high_risk_detected = False  # Stop applying tint when faded out
-                else:
-                    intensity = 0  # No tint by default
+                    self.log_high_risk()
 
             # Apply tint to the frame
             tinted_frame = self.apply_red_tint(frame, intensity)
