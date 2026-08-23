@@ -7,6 +7,9 @@ archive/
 # heatmap png #
 heatmap.png
 
+# confusion matrix png #
+confusion_matrix.png
+
 # Log Files #
 high_burnout_log.csv
 
